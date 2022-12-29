@@ -6,9 +6,6 @@ ENT.Category = "Halo 2 Drop Pod"
 ENT.Spawnable = true
 ENT.Author = "Rim"
 
-ENT.pod_stage = 0
-ENT.pod_state = 0 //0 for off, 1 for on
-
 
 sound.Add( {
 	name = "pod_start_sound",
