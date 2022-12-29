@@ -31,7 +31,7 @@ function ENT:Initialize()
 
 	self.pod_seat = ents.Create("prop_vehicle_prisoner_pod")
 	self.pod_seat:SetModel("models/Nova/airboat_seat.mdl") 
-	self.pod_seat:SetPos(self:GetPos() + Vector(-5, 0, 50)) //x=-15
+	self.pod_seat:SetPos(self:GetPos() + Vector(-5, 0, 50)) --x=-15
 	self.pod_seat:SetAngles(self:GetAngles() + Angle(0, 90, 0))
 	self.pod_seat:SetKeyValue("vehiclescript", "scripts/vehicles/prisoner_pod.txt")
 	self.pod_seat:SetKeyValue("limitview", 1)
