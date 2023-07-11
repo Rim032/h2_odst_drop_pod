@@ -92,12 +92,16 @@ local fuel_delay = 0.5
 local fuel_last_occurance = -fuel_delay
 
 function ENT:Think()
-	if self.active_player ~= nil and self.pod_seat:GetDriver() ~= NULL then
+	if self.active_player ~= nil then
 		net.Start("rh2_odst_pod_SEND_INFO")
 			net.WriteInt(self.pod_health, 8)
 			net.WriteInt(self.pod_stage, 4)
 			net.WriteInt(self.pod_fuel, 8)
 		net.Send(self.active_player)
+
+		if self.pod_seat:GetDriver() == NULL then
+			self.active_player = nil
+		end
 	end
 
 	if self.pod_stage == 0 then
