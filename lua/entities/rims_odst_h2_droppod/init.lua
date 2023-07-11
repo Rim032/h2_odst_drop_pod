@@ -62,7 +62,6 @@ function ENT:SpawnFunction(ply, tr, ClassName)
 	dp_ent:Spawn()
 	dp_ent:Activate()
 	dp_ent.owner = ply
-	dp_ent.owner:SetNWBool("droppod_is_occupied", false)
 
 	return dp_ent
 end
@@ -71,9 +70,7 @@ function ENT:Use(active_ply, caller, useType, value)
 	if self.pod_seat:GetDriver() == NULL and active_ply:IsValid() then
 		active_ply:EnterVehicle(self.pod_seat)
 		self.pod_seat:SetThirdPersonMode(true)
-
 		self.active_player = self.pod_seat:GetDriver() 
-		self.active_player:SetNWBool("droppod_is_occupied", true)
 
 		return self.active_player
 	end
@@ -81,33 +78,13 @@ end
 
 function ENT:OnTakeDamage(damage)
 	if damage == nil then return end
-	if self == nil or !self:IsValid() then return end
+	if !self:IsValid() then return end
 
 	self.pod_health = self.pod_health - 5
 	self:EmitSound("pod_hurt_sound")
 
 	if self.pod_health <= 0 then
-		if !self.exploded then
-			self.explode_entA = ents.Create("env_explosion") 
-			self.explode_entB = ents.Create("env_physexplosion")
-			self.explode_entA:Spawn()
-			self.explode_entB:Spawn()
-				
-			self.explode_entA:SetPos(self:GetPos())
-			self.explode_entB:SetPos(self:GetPos())
-			
-			self.explode_entB:SetKeyValue("magnitude", 175)
-			self.explode_entA:SetKeyValue("spawnflags", 178)
-			self.explode_entA:Fire("explode", "", 0)
-			self.explode_entB:Fire("explode", "", 0)
-			
-			self.explode_entA:Remove()
-			self.explode_entB:Remove()
-
-			self.exploded = true
-		end
-
-		self:Remove()
+		self:pod_explode()
 	end
 end
 
@@ -115,19 +92,12 @@ local fuel_delay = 0.5
 local fuel_last_occurance = -fuel_delay
 
 function ENT:Think()
-	if self.active_player ~= nil then
+	if self.active_player ~= nil and self.pod_seat:GetDriver() ~= NULL then
 		net.Start("rh2_odst_pod_SEND_INFO")
 			net.WriteInt(self.pod_health, 8)
 			net.WriteInt(self.pod_stage, 4)
 			net.WriteInt(self.pod_fuel, 8)
 		net.Send(self.active_player)
-
-		if self.pod_seat:GetDriver() == NULL then
-			self.active_player:SetNWBool("droppod_is_occupied", false)
-			self.active_player:StopSound("pod_door_steam_sound")
-			
-			self.active_player = nil
-		end
 	end
 
 	if self.pod_stage == 0 then
@@ -152,7 +122,7 @@ function ENT:Think()
 end
 
 function mENT:is_touching_ground()
-	if self == nil or !self:IsValid() then return end
+	if !self:IsValid() then return end
 
 	local ent_trace = {start = self:GetPos(), endpos = self:GetPos() - Vector(0, 0, 50), filter = {self, self.pod_seat}}
 	local ent_tr = util.TraceEntity(ent_trace, self)
@@ -169,7 +139,7 @@ end
 
 function mENT:pod_blast_dmg()
 	if self.active_player == nil then return end
-	if self == nil or !self:IsValid() then return end
+	if !self:IsValid() then return end
 
 	local dmg_info = DamageInfo()
 	dmg_info:SetAttacker(self.active_player)
@@ -186,13 +156,15 @@ end
 
 function mENT:bad_pod_land()
 	if self.active_player == nil then return end
-	if self == nil or !self:IsValid() then return end
+	if !self:IsValid() then return end
 
 	if !self.pod_landed and self:is_touching_ground() and self.pod_stage > 0 and !self.pod_plp_given then
 		self:StopSound("pod_thruster_sound")
 		self.active_player:EmitSound("pod_player_hurt_sound")
 		self.active_player:Kill()
-		self.pod_health = self.pod_health - 50
+
+		self.pod_health = 0
+		self:pod_explode()
 
 		self.pod_plp_given = true
 	end
@@ -201,7 +173,7 @@ end
 function mENT:pod_land()
 	if self.pod_stage ~= 2 then return end	
 	if self.active_player == nil then return end
-	if self == nil or !self:IsValid() then return end
+	if !self:IsValid() then return end
 
 	self:StopSound("pod_thruster_sound")
 	
@@ -250,7 +222,7 @@ end
 function mENT:pod_airbreak()
 	if self.pod_stage ~= 1 then return end	
 	if self.active_player == nil then return end
-	if self == nil or !self:IsValid() then return end
+	if !self:IsValid() then return end
 
 	if self.active_player:KeyDown(IN_ATTACK) and !self:is_touching_ground() then
 		self:StopSound("pod_thruster_sound")
@@ -281,19 +253,17 @@ end
 function mENT:pod_control()
 	if self.pod_stage ~= 1 then return end	
 	if self.active_player == nil then return end
-	if self == nil or !self:IsValid() then return end
+	if !self:IsValid() then return end
 
 	local fuel_time_elapsed = CurTime() - fuel_last_occurance
 
-	if self.active_player:KeyDown(IN_ATTACK2) and self.pod_fuel > 0 then
-		self:EmitSound("pod_thruster_sound")
-
+	if self.active_player:KeyDown(IN_ATTACK2) and self.pod_fuel > 0 and self.active_player:Alive() then
 		if fuel_time_elapsed > fuel_delay then
 			self.pod_fuel = self.pod_fuel - 1
 
 			local pod_thruster_velocity = self:GetPhysicsObject():LocalToWorldVector(Vector(0, 0, -800))
 			self:GetPhysicsObject():SetVelocity(self:GetPhysicsObject():GetVelocity() + pod_thruster_velocity)
-
+			self:EmitSound("pod_thruster_sound")
 			fuel_last_occurance = CurTime()
 		end
 
@@ -323,7 +293,7 @@ end
 function mENT:pod_launch()
 	if self.active_player == nil then return end
 	if self.pod_stage ~= 0 then return end	
-	if self == nil or !self:IsValid() then return end
+	if !self:IsValid() then return end
 
 	if self.active_player:KeyDown(IN_ATTACK) then
 		self.pod_stage = self.pod_stage + 1
@@ -338,10 +308,32 @@ function mENT:pod_launch()
 	end
 end
 
+function mENT:pod_explode()
+	if !self.exploded then
+		self.explode_entA = ents.Create("env_explosion") 
+		self.explode_entB = ents.Create("env_physexplosion")
+		self.explode_entA:Spawn()
+		self.explode_entB:Spawn()
+			
+		self.explode_entA:SetPos(self:GetPos())
+		self.explode_entB:SetPos(self:GetPos())
+		
+		self.explode_entB:SetKeyValue("magnitude", 175)
+		self.explode_entA:SetKeyValue("spawnflags", 178)
+		self.explode_entA:Fire("explode", "", 0)
+		self.explode_entB:Fire("explode", "", 0)
+		
+		self.explode_entA:Remove()
+		self.explode_entB:Remove()
+
+		self.exploded = true
+	end
+
+	self:Remove()
+end
+
 function ENT:OnRemove()
 	if self.active_player ~= nil then
-		self.active_player:SetNWBool("droppod_is_occupied", false)
-
 		self.active_player:StopSound("pod_impact_sound")
 		self.active_player:StopSound("pod_start_sound")
 		self.active_player:StopSound("pod_launch_sound")
@@ -350,7 +342,6 @@ function ENT:OnRemove()
 		self.active_player:StopSound("pod_door_steam_sound")
 	end
 
-	self.pod_seat:GetDriver():SetNWBool("droppod_is_occupied", false)
 	self:StopSound("pod_hurt_sound")
 	self:StopSound("pod_thruster_sound")
 	self.pod_seat:Remove()
