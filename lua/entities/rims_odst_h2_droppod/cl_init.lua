@@ -77,8 +77,7 @@ end)
 
 
 hook.Add("HUDPaint", "rh2_droppod_hud_hook", function()
-	if LocalPlayer():GetNWBool("droppod_is_occupied") == false then return end
-	if LocalPlayer():GetVehicle() == NULL or LocalPlayer():GetVehicle():GetParent():GetClass() ~= "rims_odst_h2_droppod" then LocalPlayer():SetNWBool("droppod_is_occupied", false) return end
+	if LocalPlayer():GetVehicle() == NULL or LocalPlayer():GetVehicle():GetParent():GetClass() ~= "rims_odst_h2_droppod" then return end
 
 	draw.RoundedBox(0, ScrW()/2.31, ScrH()-ScrH()/8.44, ScrW()/7.5, ScrH()/24, Color(25, 25, 25, 200))
 	draw.RoundedBox(0, ScrW()/2-ScrW()/15.48, ScrH()-ScrH()/8.71, pod_fuel * ScrW()/23.23, 37, Color(252, 160, 98, 200))
@@ -92,8 +91,7 @@ hook.Add("HUDPaint", "rh2_droppod_hud_hook", function()
 end)
 
 hook.Add( "CalcView", "MyCalcView", function(ply, pos, angles, fov)
-	if LocalPlayer():GetNWBool("droppod_is_occupied") == false then return end
-	if LocalPlayer():GetVehicle() == NULL or LocalPlayer():GetVehicle():GetParent():GetClass() ~= "rims_odst_h2_droppod" then LocalPlayer():SetNWBool("droppod_is_occupied", false) return end
+	if LocalPlayer():GetVehicle() == NULL or LocalPlayer():GetVehicle():GetParent():GetClass() ~= "rims_odst_h2_droppod" then return end
 	--if !pod_ply:GetVehicle():GetThirdPersonMode() then return end
 
 	local view = {
