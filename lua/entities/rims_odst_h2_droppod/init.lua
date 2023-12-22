@@ -3,12 +3,16 @@ AddCSLuaFile("shared.lua")
 include("shared.lua")
 
 util.AddNetworkString("rh2_odst_pod_LAUNCH")
-util.AddNetworkString("rh2_odst_pod_THRUST_ON")
+--util.AddNetworkString("rh2_odst_pod_THRUST_ON")
 util.AddNetworkString("rh2_odst_pod_AIRBREAK_ON")
 util.AddNetworkString("rh2_odst_pod_LANDED")
 util.AddNetworkString("rh2_odst_pod_SEND_INFO")
 
 local mENT = FindMetaTable("Entity")
+
+game.AddParticles("particles/h2_odst_droppod_effects.pcf")
+PrecacheParticleSystem("h2_odst_droppod_thrust_main")
+PrecacheParticleSystem("h2_odst_droppod_air_main")
 
 function ENT:Initialize()
 	self:SetModel("models/rim/h2_odst_pod_01.mdl")
@@ -31,7 +35,7 @@ function ENT:Initialize()
 	self.pod_seat:SetPos(self:GetPos() + Vector(-5, 0, 50)) --x=-15
 	self.pod_seat:SetAngles(self:GetAngles() + Angle(0, 90, 0))
 	self.pod_seat:SetKeyValue("vehiclescript", "scripts/vehicles/prisoner_pod.txt")
-	self.pod_seat:SetKeyValue("limitview", 1)
+	self.pod_seat:SetKeyValue("limitview", 0)
 	self.pod_seat:SetCameraDistance(5) 
 	self.pod_seat:SetThirdPersonMode(true)
 	self.pod_seat:SetParent(self)
@@ -49,6 +53,7 @@ function ENT:Initialize()
 	self.pod_stage = 0
 	self.launch_speed_degraded = false
 	self.thruster_being_used = false
+	self.max_velocity_turn = 25
 
 	self:GetPhysicsObject():SetMass(200)
 end
@@ -76,11 +81,12 @@ function ENT:Use(active_ply, caller, useType, value)
 	end
 end
 
-function ENT:OnTakeDamage(damage)
-	if damage == nil then return end
+function ENT:OnTakeDamage(dmg)
+	if dmg == nil then return end
 	if !self:IsValid() then return end
 
-	self.pod_health = self.pod_health - 5
+	dmg:ScaleDamage(0.5)
+	self.pod_health = self.pod_health - dmg:GetDamage()
 	self:EmitSound("pod_hurt_sound")
 
 	if self.pod_health <= 0 then
@@ -88,7 +94,7 @@ function ENT:OnTakeDamage(damage)
 	end
 end
 
-local fuel_delay = 0.5
+local fuel_delay = 0.25
 local fuel_last_occurance = -fuel_delay
 
 function ENT:Think()
@@ -97,6 +103,7 @@ function ENT:Think()
 			net.WriteInt(self.pod_health, 8)
 			net.WriteInt(self.pod_stage, 4)
 			net.WriteInt(self.pod_fuel, 8)
+			net.WriteEntity(self)
 		net.Send(self.active_player)
 
 		if self.pod_seat:GetDriver() == NULL then
@@ -110,18 +117,26 @@ function ENT:Think()
 		self:pod_control()
 		self:pod_airbreak()
 
-		if !self.airbreak_on and !self.pod_plp_given and !self.launch_speed_degraded and !self.pod_landed and !self.thruster_being_used then
-			if self:GetPhysicsObject():GetAngleVelocity().x >= -20 and self:GetPhysicsObject():GetAngleVelocity().x <= 20 and self:GetPhysicsObject():GetAngleVelocity().y <= 15 and self:GetPhysicsObject():GetAngleVelocity().y >= -15 then
-				local pod_constant_velocity = self:GetPhysicsObject():LocalToWorldVector(Vector(0, 0, -1500))
-				self:GetPhysicsObject():SetVelocity(pod_constant_velocity)
-			else
-				self.launch_speed_degraded = true
-			end
-		end
+		self:apply_prime_velocity()
 
 		self:bad_pod_land()
 	elseif self.pod_stage == 2 then
 		self:pod_land()
+	end
+end
+
+function mENT:apply_prime_velocity()
+	if !self:IsValid() then return end
+	if self.max_velocity_turn == nil then return end
+
+	if !self.airbreak_on and !self.pod_plp_given and !self.launch_speed_degraded and !self.pod_landed and !self.thruster_being_used then
+		local pod_ang_velocity = self:GetPhysicsObject():GetAngleVelocity()
+		if pod_ang_velocity.x >= -self.max_velocity_turn and pod_ang_velocity.x <= self.max_velocity_turn and pod_ang_velocity.y <= self.max_velocity_turn and pod_ang_velocity.y >= -self.max_velocity_turn then
+			local pod_constant_velocity = self:GetPhysicsObject():LocalToWorldVector(Vector(0, 0, -1800))
+			self:GetPhysicsObject():SetVelocity(pod_constant_velocity)
+		else
+			self.launch_speed_degraded = true
+		end
 	end
 end
 
@@ -136,9 +151,9 @@ function mENT:is_touching_ground()
 
 	if trace_result_ent:GetClass() == "worldspawn" then
 		return true
-	else
-		return false
 	end
+
+	return false
 end
 
 function mENT:pod_blast_dmg()
@@ -198,7 +213,6 @@ function mENT:pod_land()
 	end
 
 	if self.pod_landed and !self.door_opened and self.active_player:KeyDown(IN_ATTACK) then
-		self.active_player:EmitSound("pod_door_steam_sound")
 		self.pod_stage = self.pod_stage + 1
 		self:SetBodygroup(2, 1)
 
@@ -216,7 +230,6 @@ function mENT:pod_land()
 		self.active_player:EmitSound("pod_door_pop_sound")
 		timer.Simple(2, function()
 			if self.active_player ~= nil then
-				self.active_player:StopSound("pod_door_steam_sound")
 				self.active_player:StopSound("pod_door_pop_sound")
 			end
 		end)
@@ -240,7 +253,7 @@ function mENT:pod_airbreak()
 		net.Start("rh2_odst_pod_AIRBREAK_ON")
 		net.Send(self.active_player)
 
-		local pod_airbreak_velocity = self:GetPhysicsObject():LocalToWorldVector(Vector(0, 0, -800))
+		local pod_airbreak_velocity = self:GetPhysicsObject():LocalToWorldVector(Vector(0, 0, -1400))
 		self:GetPhysicsObject():SetVelocity(pod_airbreak_velocity)
 
 		if self.airbreak_on then
@@ -256,32 +269,31 @@ end
 
 function mENT:pod_control()
 	if self.pod_stage ~= 1 then return end	
-	if self.active_player == nil then return end
+	if self.active_player == nil or !self.active_player:Alive() then return end
 	if !self:IsValid() then return end
 
 	local fuel_time_elapsed = CurTime() - fuel_last_occurance
 
-	if self.active_player:KeyDown(IN_ATTACK2) and self.pod_fuel > 0 and self.active_player:Alive() then
+	if self.active_player:KeyDown(IN_ATTACK2) and self.pod_fuel > 0 then
 		if fuel_time_elapsed > fuel_delay then
 			self.pod_fuel = self.pod_fuel - 1
 
 			local pod_thruster_velocity = self:GetPhysicsObject():LocalToWorldVector(Vector(0, 0, -800))
-			self:GetPhysicsObject():SetVelocity(self:GetPhysicsObject():GetVelocity() + pod_thruster_velocity)
+			self:GetPhysicsObject():AddVelocity(pod_thruster_velocity)
 			self:EmitSound("pod_thruster_sound")
 			fuel_last_occurance = CurTime()
 		end
 
-		net.Start("rh2_odst_pod_THRUST_ON")
-			net.WriteEntity(self)
-		net.Send(self.active_player)
-
+		--[[net.Start("rh2_odst_pod_THRUST_ON")
+		net.Send(self.active_player)]]
+		self:SetNWBool("droppod_thrust_is_on", true)
 		self.thruster_being_used = true
 	else
-		self:StopSound("pod_thruster_sound")
 		self.thruster_being_used = false
-	end
 
-	self.pod_trail = util.SpriteTrail(self, 1, Color(255, 255, 255, 15), false, 46, 1, 2, 1 / (15 + 1) * 0.5, "sprites/smoke_trail")
+		self:SetNWBool("droppod_thrust_is_on", false)
+		self:StopSound("pod_thruster_sound")
+	end
 
 	if self.active_player:KeyDown(IN_MOVELEFT) and self.pod_fuel > 0 then
 		self:GetPhysicsObject():AddAngleVelocity(Vector(-5, 0, 0))
@@ -304,7 +316,6 @@ function mENT:pod_launch()
 		self:GetPhysicsObject():EnableGravity(true)
 		self:GetPhysicsObject():EnableMotion(true)
 
-		--self:SetAngles(Angle(0, 0, 0))
 		local pod_launch_velocity = self:GetPhysicsObject():LocalToWorldVector(Vector(0, 0, -4000))
 		self:GetPhysicsObject():SetVelocity(pod_launch_velocity)
 
@@ -343,7 +354,6 @@ function ENT:OnRemove()
 		self.active_player:StopSound("pod_launch_sound")
 		self.active_player:StopSound("pod_airbreak_sound")
 		self.active_player:StopSound("pod_player_hurt_sound")
-		self.active_player:StopSound("pod_door_steam_sound")
 	end
 
 	self:StopSound("pod_hurt_sound")
