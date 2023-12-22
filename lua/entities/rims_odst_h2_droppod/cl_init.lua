@@ -1,5 +1,9 @@
 include("shared.lua")
 
+game.AddParticles("particles/h2_odst_droppod_effects.pcf")
+PrecacheParticleSystem("h2_odst_droppod_thrust_main")
+PrecacheParticleSystem("h2_odst_droppod_air_main")
+
 surface.CreateFont("DP_Font", {
 	font = "Arial",
 	extended = false,
@@ -20,51 +24,50 @@ surface.CreateFont("DP_Font", {
 
 function ENT:Draw()
 	self:DrawModel()
-end
 
-local thruster_dlightA = DynamicLight(LocalPlayer():EntIndex())
-local thruster_dlightB = DynamicLight(LocalPlayer():EntIndex())
+	if self:GetNWBool("droppod_thrust_is_on") then
+		local thrust_emitter = ParticleEmitter(self:GetPos())
+		if thrust_emitter == nil then return end
+
+		local v_offset = self:GetAttachment(1).Pos
+		local v_normal = self:GetUp()
+		v_offset = v_offset + v_normal * 5
+
+		local thrust_particle = thrust_emitter:Add("effects/softglow.vmt", v_offset)
+		if thrust_particle == nil then return end
+
+		thrust_particle:SetVelocity( v_normal * math.Rand(1500,2000) + self:GetVelocity())
+		thrust_particle:SetLifeTime(0)
+		thrust_particle:SetDieTime(0.1)
+		thrust_particle:SetStartAlpha(255)
+		thrust_particle:SetEndAlpha(0)
+		thrust_particle:SetStartSize(math.Rand(45,55))
+		thrust_particle:SetEndSize(math.Rand(0,10))
+		thrust_particle:SetRoll(math.Rand(-1,1) * 100)
+		thrust_particle:SetColor(0, 76, 255)
+
+		render.SetMaterial(Material("sprites/light_glow02_add"))
+		render.DrawSprite(self:GetAttachment(1).Pos, 384, 180, Color(0, 76, 255))
+	end
+end
 
 local pod_fuel = 3
 local pod_stage = 0
 local pod_health = 100
 local pod_ent = nil
 
-net.Receive("rh2_odst_pod_THRUST_ON", function(len, ply)
-	pod_ent = net.ReadEntity()
-
-	if (thruster_dlightA) then
-		thruster_dlightA.pos = pod_ent:GetAttachment(1).Pos
-		thruster_dlightA.r = 25
-		thruster_dlightA.g = 25
-		thruster_dlightA.b = 255
-		thruster_dlightA.brightness = 8
-		thruster_dlightA.Decay = 200
-		thruster_dlightA.Size = 256
-		thruster_dlightA.DieTime = CurTime() + 8
-	end
-
-	if (thruster_dlightB) then
-		thruster_dlightB.pos = pod_ent:GetAttachment(1).Pos
-		thruster_dlightB.r = 25
-		thruster_dlightB.g = 25
-		thruster_dlightB.b = 255
-		thruster_dlightB.brightness = 8
-		thruster_dlightB.Decay = 200
-		thruster_dlightB.Size = 256
-		thruster_dlightB.DieTime = CurTime() + 8
-	end
-
-	--render.DrawSprite(pod_vector + Vector(0, 0, 300), 512, 512, Color(0, 0, 100))
-	return pod_vector
-end)
+--[[net.Receive("rh2_odst_pod_THRUST_ON", function(len, ply)
+	local thruster_particle = pod_ent:CreateParticleEffect("h2_odst_droppod_thrust_main", 1)
+	timer.Simple(0.5, function() thruster_particle:StopEmissionAndDestroyImmediately() end)
+end)]]
 
 net.Receive("rh2_odst_pod_SEND_INFO", function(len, ply)
 	pod_health = net.ReadInt(8)
 	pod_stage = net.ReadInt(4)
 	pod_fuel = net.ReadInt(8)
+	pod_ent = net.ReadEntity()
 
-	return pod_health, pod_stage, pod_fuel
+	return pod_health, pod_stage, pod_fuel, pod_ent
 end)
 
 net.Receive("rh2_odst_pod_LANDED", function(len, ply)
@@ -72,7 +75,10 @@ net.Receive("rh2_odst_pod_LANDED", function(len, ply)
 end)
 
 net.Receive("rh2_odst_pod_AIRBREAK_ON", function(len, ply)
-	util.ScreenShake(Vector(0, 0, 0), 2, 2, 2, 100)
+	util.ScreenShake(Vector(0, 0, 0), 6, 6, 3, 100)
+
+	--[[local heat_particle = pod_ent:CreateParticleEffect("h2_odst_droppod_air_main", 1)
+	timer.Simple(1, function() heat_particle:StopEmissionAndDestroyImmediately() end)]]
 end)
 
 
@@ -94,7 +100,6 @@ end)
 hook.Add( "CalcView", "MyCalcView", function(ply, pos, angles, fov)
 	if LocalPlayer():GetVehicle() == NULL or LocalPlayer():GetVehicle():GetParent() == NULL then return end
 	if LocalPlayer():GetVehicle():GetParent():GetClass() ~= "rims_odst_h2_droppod" then return end
-	--if !pod_ply:GetVehicle():GetThirdPersonMode() then return end
 
 	local view = {
 		origin = pos - (angles:Forward() * 200),
