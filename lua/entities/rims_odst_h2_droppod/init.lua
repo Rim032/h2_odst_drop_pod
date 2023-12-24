@@ -252,6 +252,7 @@ function mENT:pod_airbreak()
 
 		net.Start("rh2_odst_pod_AIRBREAK_ON")
 		net.Send(self.active_player)
+		self:SetNWBool("droppod_thrust_is_on", false)
 
 		local pod_airbreak_velocity = self:GetPhysicsObject():LocalToWorldVector(Vector(0, 0, -1400))
 		self:GetPhysicsObject():SetVelocity(pod_airbreak_velocity)
